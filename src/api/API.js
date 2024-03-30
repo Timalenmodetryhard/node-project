@@ -1,14 +1,124 @@
 const express = require("express");
 const {json} = require("express");
+const session = require("express-session");
+const bcrypt = require ("bcrypt");
 const app = express();
 app.use(json());
 
-//Account API
+const { MongoClient } = require('mongodb');
 
-const accounts = []
+const url = 'mongodb://localhost:27017';
+
+const client = new MongoClient(url);
+
+async function connectToDB() {
+    try {
+        await client.connect();
+        console.log('Connecté à la base de données MongoDB');
+    } catch (err) {
+        console.error('Erreur de connexion à la base de données:', err);
+    }
+}
+
+// Functions
+
+// Get users
+async function getUsers() {
+    try {
+        connectToDB()
+
+        const database = client.db('db-cart');
+        const collection = database.collection('Users Collection');
+
+        const result = await collection.find({}).toArray;
+
+        console.log('Données importées avec succès');
+        return result
+    } catch (err) {
+        console.error('Erreur lors de la récupération de données:', err);
+    }
+}
+
+// Import users
+async function importUsers(user) {
+    try {
+        connectToDB()
+
+        const database = client.db('db-cart');
+        const collection = database.collection('Users Collection');
+
+        await collection.insertOne(user);
+
+        console.log('Données importées avec succès');
+    } catch (err) {
+        console.error('Erreur lors de l\'importation des données:', err);
+    } finally {
+        await client.close();
+    }
+}
+
+//Login user
+async function loginUser(user) {
+    try {
+        connectToDB()
+
+        const database = client.db('db-cart');
+        const collection = database.collection('Users Collection');
+
+        const accounts = await collection.find({}).toArray
+        const password = user.password
+        for (const account of accounts){
+            const hashedPassword = account.password
+            if (account.email === user.email) {
+                bcrypt.compare(password, hashedPassword, (err, result) => {
+                    if (err) {
+                        console.error('Erreur lors de la comparaison des mots de passe :', err);
+                        return;
+                    }
+                    if (result) {
+                        app.use((req, res, next) => {
+                            req.session.user = account
+                            next();
+                        });
+                        console.log('Le mot de passe correspond.');
+                    } else {
+                        console.log('Le mot de passe ne correspond pas.');
+                    }
+                });
+            } else {
+                console.log("Le mail saisi ne correspond pas.")
+            }
+        }
+
+        console.log('Données importées avec succès');
+    } catch (err) {
+        console.error('Erreur lors de l\'importation des données:', err);
+    } finally {
+        await client.close();
+    }
+}
+
+//Session
+
+//Configure session
+app.use(session({
+    secret: 'votre_secret',
+    resave: false,
+    saveUninitialized: true
+}));
+
+app.use((req, res, next) => {
+    if (!req.session.user) {
+        req.session.user = {};
+    }
+    next();
+});
+
+//Account API
 
 //Get user information
 app.get("/account/:userId", (req, res)=>{
+    const accounts = getUsers();
     const userId = parseInt(req.params.userId);
     res.json(accounts[userId-1])
     res.status(200).json(accounts);
@@ -16,22 +126,34 @@ app.get("/account/:userId", (req, res)=>{
 
 //Create user
 app.post("/register", (req, res)=>{
+    const accounts = getUsers();
+    let password = req.body.password 
+
+    bcrypt.hash(password, 10, (err, hash) => {
+        if (err) {
+            console.error('Erreur lors du hachage du mot de passe :', err);
+            password = hash;
+        }
+        console.log('Mot de passe haché :', hash);
+    });
+
     const newAccount = {
-        id: accounts.length+1,
+        _id: accounts.length+1,
+        email: req.body.email,
         name: req.body.name,
-        balance: req.body.balance,
-        purchases: []
+        password: password
     };
-    accounts.push(newAccount);
+    importUsers(newAccount)
     res.status(201).json(newAccount);
 })
 
 //Delete user
 app.delete("/account/:userId", (req, res)=>{
+    const accounts = getUsers();
     const userId = parseInt(req.params.userId);
     for(let i=0; i<accounts.length; i++){
         let currentUser = accounts[i];
-        if(currentUser.id == userId){
+        if(currentUser.id === userId){
             accounts.pop(currentUser)
         }
     }
@@ -40,6 +162,7 @@ app.delete("/account/:userId", (req, res)=>{
 
 //Update user balance
 app.put('/account/update', (req, res) => {
+    const accounts = getUsers();
     const userId = req.body.userId;
     const userNewBalance = req.body.newBalance;
     for(let i=0; i<accounts.length; i++){
