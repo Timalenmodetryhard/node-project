@@ -1,31 +1,27 @@
 import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 
 function Home() {
-   const [userData, setUserData] = useState(null);
+  const [account, setAccount] = useState(null);
 
-   useEffect(() => {
-      fetch('http://localhost:8080/api/logged', {
-         method: 'GET',
-      })
-      .then(response => {
-         if (!response.ok) {
-            throw new Error('Impossible de récupérer les données utilisateur');
-         }
-         return response.json();
-      })
-      .then(data => {
-         setUserData(data);
-      })
-      .catch(error => {
-         console.error('Erreur lors de la récupération des données utilisateur:', error);
-      });
-   }, []);
+  useEffect(() => {
+    const fetchAccount = async () => {
+      try {
+        const res = await axios.get('http://localhost:8080/api/logged');
+        setAccount(res.data);
+      } catch (error) {
+        console.error('Erreur lors de la récupération du compte:', error);
+      }
+    };
 
-   return (
-      <div>
-         <p>Welcome {userData && userData.name}</p>
-      </div>
-   );
+    fetchAccount();
+  }, []);
+
+  return (
+    <div>
+      <p>Welcome {account}</p>
+    </div>
+  );
 }
 
 export default Home;
