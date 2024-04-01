@@ -1,5 +1,6 @@
 require("dotenv").config()
 const express = require("express");
+//const session = require("express-session")
 const {json, urlencoded} = require("express");
 const jwt = require("jsonwebtoken")
 const bcrypt = require ("bcrypt");
@@ -20,7 +21,7 @@ app.use(urlencoded({ extended: true }));
 const protectionRoute = (req, res, next) => {
     const token = req.query.token;
     if (token) {
-        jwt.verify(token, process.env.TOKEN_KEY, (err, account) =>{
+        jwt.verify(token, `process.env.TOKEN_KEY`, (err, account) =>{
             if (err) {
                 return res.redirect("/login")
             }
@@ -31,20 +32,33 @@ const protectionRoute = (req, res, next) => {
     }
 }
 
+//app.use(
+   // session({
+    //    name: process.env.SESSION_NAME,
+     //   resave: false,
+     //   saveUninitialized: false,
+      //  secret: process.env.SESSION_SECRET,
+      //  cookie: {
+       //     maxAge: 1000 * 60 * 60 * 24 * 7,
+       //     secure: false
+     //   }
+ //   })
+//)
+
 app.use((req, res, next) => {
     const { token } = req.query;
     if (token) {
-        jwt.verify(token, process.env.TOKEN_KEY, (err, account) => {
+        jwt.verify(token, `process.env.TOKEN_KEY`, (err, account) => {
             if (err) {
                 console.error('Erreur lors de la vérification du jeton :', err);
-                return res.redirect("/login"); // Rediriger vers la page de connexion en cas d'erreur de jeton
+                return res.redirect("/login");
             }
             account.token = token;
             res.locals.account = account;
-            next(); // Appeler next une fois que le jeton a été vérifié avec succès
+            next();
         });
     } else {
-        next(); // Si aucun jeton n'est présent, passer simplement au middleware suivant
+        next();
     }
 });
 
@@ -119,7 +133,7 @@ async function loginUser(req, user) {
                         return;
                     }
                     if (result) {
-                        const token = jwt.sign({id: account._id,email:account.email,name:account.name},process.env.TOKEN_KEY)
+                        const token = jwt.sign({id: account._id,email:account.email,name:account.name},`process.env.TOKEN_KEY`)
                         account.token = token;
                         console.log('Le mot de passe correspond.');
                         return
@@ -165,12 +179,10 @@ app.post("/api/register", async (req, res)=>{
         };
         await importUsers(newAccount)
 
-        const token = jwt.sign({_id: newAccount._id,email:newAccount.email,name:newAccount.name},process.env.TOKEN_KEY)
+        //req.session._id = newAccount._id
+        const token = jwt.sign({_id: newAccount._id,email:newAccount.email,name:newAccount.name},`process.env.TOKEN_KEY`)
         newAccount.token = token;
 
-        res.render()
-
-        res.status(201).json(newAccount);
         res.redirect("http://localhost:3000/login")
     } catch (err) {
         console.error('Erreur lors du hachage du mot de passe :', err);
@@ -181,15 +193,13 @@ app.post("/api/register", async (req, res)=>{
 //Login user
 app.post("/api/login", (req, res)=>{
     loginUser(req, req.body)
-    res.status(200).json(req.body);
     res.redirect("http://localhost:3000/")
 })
 
 //Logout user
 app.post("/api/logout", (req, res)=>{
     logoutUser(req)
-    res.status(200).json(req.body);
-    res.redirect("http://localhost:3000/login")
+    res.redirect("http://localhost:3000/")
 })
 
 //Logged user
