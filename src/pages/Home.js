@@ -6,7 +6,6 @@ function Home() {
    useEffect(() => {
       fetch('http://localhost:8080/api/logged', {
          method: 'GET',
-         credentials: 'include'
       })
       .then(response => {
          if (!response.ok) {

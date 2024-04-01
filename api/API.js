@@ -1,6 +1,7 @@
+require("dotenv").config()
 const express = require("express");
-const {json} = require("express");
-const session = require("express-session");
+const {json, urlencoded} = require("express");
+const jwt = require("jsonwebtoken")
 const bcrypt = require ("bcrypt");
 const cors = require ("cors")
 
@@ -12,6 +13,42 @@ const { MongoClient } = require('mongodb');
 const url = 'mongodb://localhost:27017';
 
 const client = new MongoClient(url);
+
+app.use(json());
+app.use(urlencoded({ extended: true }));
+
+const protectionRoute = (req, res, next) => {
+    const token = req.query.token;
+    if (token) {
+        jwt.verify(token, process.env.TOKEN_KEY, (err, account) =>{
+            if (err) {
+                return res.redirect("/login")
+            }
+            next()
+        })
+    } else {
+        return res.redirect("/login")
+    }
+}
+
+app.use((req, res, next) => {
+    const { token } = req.query;
+    if (token) {
+        jwt.verify(token, process.env.TOKEN_KEY, (err, account) => {
+            if (err) {
+                console.error('Erreur lors de la vérification du jeton :', err);
+                return res.redirect("/login"); // Rediriger vers la page de connexion en cas d'erreur de jeton
+            }
+            account.token = token;
+            res.locals.account = account;
+            next(); // Appeler next une fois que le jeton a été vérifié avec succès
+        });
+    } else {
+        next(); // Si aucun jeton n'est présent, passer simplement au middleware suivant
+    }
+});
+
+
 
 async function connectToDB() {
     try {
@@ -49,6 +86,10 @@ async function importUsers(user) {
         const database = client.db('db-cart');
         const collection = database.collection('Users Collection');
 
+        const salt = await bcrypt.genSalt(10)
+        const hash = await bcrypt.hash(user.password, salt);
+        user.password = hash
+
         await collection.insertOne(user);
 
         console.log('Données importées avec succès');
@@ -78,7 +119,8 @@ async function loginUser(req, user) {
                         return;
                     }
                     if (result) {
-                        req.session.user = account
+                        const token = jwt.sign({id: account._id,email:account.email,name:account.name},process.env.TOKEN_KEY)
+                        account.token = token;
                         console.log('Le mot de passe correspond.');
                         return
                     } else {
@@ -98,58 +140,38 @@ async function loginUser(req, user) {
 }
 
 //Login user
-async function logoutUser() {
+async function logoutUser(req) {
     try {
-        app.use((req, res, next) => {
-            req.session.user = {}
-            next();
-        });
+        req.locals.account = undefined
     } catch (err) {
         console.error('Erreur lors de la déconnection:', err);
     }
 }
 
-//Logged user
-
-//Session
-
-//Configure session
-app.use(session({
-    secret: 'votre_secret',
-    resave: false,
-    saveUninitialized: true
-}));
-
-app.use(cors());
-
 //Account API
-
-//Get user information
-app.get("/account/:userId", (req, res)=>{
-    const accounts = getUsers();
-    const userId = parseInt(req.params.userId);
-    res.json(accounts[userId-1])
-    res.status(200).json(accounts);
-});
 
 //Create user
 app.post("/api/register", async (req, res)=>{
-    let password = req.body.password 
-
     try {
+        let password = req.body.password 
         const users = await getUsers();
-        const newId = users.length + 1;
-        const hash = await bcrypt.hash(password, 10);
-        console.log('Mot de passe haché :', hash);
+        let newId = users.length +1
 
         const newAccount = {
             _id: newId,
             email: req.body.email,
             name: req.body.name,
-            password: hash
+            password: password
         };
-        importUsers(newAccount)
+        await importUsers(newAccount)
+
+        const token = jwt.sign({_id: newAccount._id,email:newAccount.email,name:newAccount.name},process.env.TOKEN_KEY)
+        newAccount.token = token;
+
+        res.render()
+
         res.status(201).json(newAccount);
+        res.redirect("http://localhost:3000/login")
     } catch (err) {
         console.error('Erreur lors du hachage du mot de passe :', err);
         res.status(500).json({ error: 'Erreur lors du hachage du mot de passe' });
@@ -160,36 +182,33 @@ app.post("/api/register", async (req, res)=>{
 app.post("/api/login", (req, res)=>{
     loginUser(req, req.body)
     res.status(200).json(req.body);
+    res.redirect("http://localhost:3000/")
 })
 
 //Logout user
 app.post("/api/logout", (req, res)=>{
-    logoutUser()
+    logoutUser(req)
     res.status(200).json(req.body);
+    res.redirect("http://localhost:3000/login")
 })
 
 //Logged user
 app.get("/api/logged", (req, res)=>{
-    if (req.session.user) {
-        res.status(200).json(req.session.user);
-    } else {
-        res.status(404).json({ error: 'Utilisateur non connecté' });
-    }
+    const { account } = res.locals;
+    console.log(account)
 })
 
 //Cart API
 
-// Middleware pour activer CORS
+//Middleware
 app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3000');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
     next();
 });
 
+
 const port = 8080;
 app.listen(port, () => {
-    
     console.log(`Serveur démarré sur le port ${port}`);
 });
