@@ -1,6 +1,6 @@
 require("dotenv").config()
 const express = require("express");
-//const session = require("express-session")
+const session = require("express-session")
 const {json, urlencoded} = require("express");
 const jwt = require("jsonwebtoken")
 const bcrypt = require ("bcrypt");
